@@ -8,9 +8,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, CallbackQu
 from groq import Groq
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from googleapiclient.discovery import build
-import email as email_lib
-from email.mime.text import MIMEText
+import requests as req_lib
 
 TZ = pytz.timezone("America/Argentina/Buenos_Aires")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -38,45 +36,44 @@ def get_google_creds():
     return creds
 
 # --- Gmail ---
-def get_gmail_service():
-    return build("gmail", "v1", credentials=get_google_creds())
-
 def get_important_emails(max_results=5):
-    service = get_gmail_service()
-    results = service.users().messages().list(
-        userId="me", labelIds=["INBOX", "UNREAD"], maxResults=max_results
-    ).execute()
-    messages = results.get("messages", [])
+    creds = get_google_creds()
+    token = creds.token
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&labelIds=UNREAD&maxResults={max_results}"
+    r = req_lib.get(url, headers=headers)
+    messages = r.json().get("messages", [])
     emails = []
     for msg in messages:
-        detail = service.users().messages().get(userId="me", id=msg["id"], format="metadata",
-            metadataHeaders=["From", "Subject", "Date"]).execute()
-        headers = {h["name"]: h["value"] for h in detail["payload"]["headers"]}
+        detail = req_lib.get(
+            f"https://gmail.googleapis.com/gmail/v1/users/me/messages/{msg['id']}?format=metadata&metadataHeaders=From&metadataHeaders=Subject&metadataHeaders=Date",
+            headers=headers
+        ).json()
+        hdrs = {h["name"]: h["value"] for h in detail.get("payload", {}).get("headers", [])}
         emails.append({
-            "from": headers.get("From", "Desconocido"),
-            "subject": headers.get("Subject", "Sin asunto"),
-            "date": headers.get("Date", ""),
+            "from": hdrs.get("From", "Desconocido"),
+            "subject": hdrs.get("Subject", "Sin asunto"),
+            "date": hdrs.get("Date", ""),
             "id": msg["id"]
         })
     return emails
 
 # --- Google Calendar ---
-def get_calendar_service():
-    return build("calendar", "v3", credentials=get_google_creds())
-
 def get_today_events():
-    service = get_calendar_service()
+    creds = get_google_creds()
+    token = creds.token
+    headers = {"Authorization": f"Bearer {token}"}
     now = datetime.now(TZ)
     start = now.replace(hour=0, minute=0, second=0).isoformat()
     end = now.replace(hour=23, minute=59, second=59).isoformat()
-    events_result = service.events().list(
-        calendarId="primary", timeMin=start, timeMax=end,
-        singleEvents=True, orderBy="startTime"
-    ).execute()
-    return events_result.get("items", [])
+    url = f"https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin={req_lib.utils.quote(start)}&timeMax={req_lib.utils.quote(end)}&singleEvents=true&orderBy=startTime"
+    r = req_lib.get(url, headers=headers)
+    return r.json().get("items", [])
 
 def create_calendar_event(title, date_str, time_str="10:00", description=""):
-    service = get_calendar_service()
+    creds = get_google_creds()
+    token = creds.token
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     start_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
     start_dt = TZ.localize(start_dt)
     end_dt = start_dt + timedelta(hours=1)
@@ -86,7 +83,8 @@ def create_calendar_event(title, date_str, time_str="10:00", description=""):
         "start": {"dateTime": start_dt.isoformat(), "timeZone": "America/Argentina/Buenos_Aires"},
         "end": {"dateTime": end_dt.isoformat(), "timeZone": "America/Argentina/Buenos_Aires"},
     }
-    return service.events().insert(calendarId="primary", body=event).execute()
+    r = req_lib.post("https://www.googleapis.com/calendar/v3/calendars/primary/events", headers=headers, json=event)
+    return r.json()
 
 # --- Tareas ---
 def load_tasks():
@@ -417,4 +415,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
