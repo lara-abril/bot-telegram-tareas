@@ -147,7 +147,7 @@ async def ver_mails(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         emails = get_important_emails()
         if not emails:
-            await update.message.reply_text("✅ No tenés mails no leídos.")
+            await update.message.reply_text("📭 No se encontraron mails en tu bandeja.\n\nVerificá que la cuenta de Gmail autorizada sea la correcta.")
             return
         msg = f"📧 *Mails no leídos ({len(emails)}):*\n\n"
         for i, e in enumerate(emails, 1):
