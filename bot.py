@@ -40,7 +40,7 @@ def get_important_emails(max_results=5):
     creds = get_google_creds()
     token = creds.token
     headers = {"Authorization": f"Bearer {token}"}
-    url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&labelIds=UNREAD&maxResults={max_results}"
+    url = f"https://gmail.googleapis.com/gmail/v1/users/me/messages?labelIds=INBOX&maxResults={max_results}"
     r = req_lib.get(url, headers=headers)
     messages = r.json().get("messages", [])
     emails = []
